@@ -216,8 +216,8 @@
         <div class="gdhead">Duty/Tax Calculation Sheet of GD No. <span id="gdShow">_________________</span></div>
         <label class="field">Retail price declared?</label>
         <div class="choice">
-          <label><input type="radio" name="rp" value="no" checked /> Not declared (uplift 1.3)</label>
-          <label><input type="radio" name="rp" value="yes" /> Declared (uplift 1.1)</label>
+          <label><input type="radio" name="rp" value="no" checked /> Not declared (uplift 130% of [Assessed Import Value + all D&amp;T excluding paid ST/AST])</label>
+          <label><input type="radio" name="rp" value="yes" /> Declared (uplift 110% of [Assessed Import Value + all D&amp;T excluding paid ST/AST])</label>
         </div>
         <label class="field">Take import value and duty/taxes from</label>
         <div class="choice">
@@ -530,7 +530,7 @@ function renderGST() {
   const line = (k, v) => `<tr><td>${k}</td><td class="num">${v}</td></tr>`;
   document.getElementById("gstBody").innerHTML =
     line("Basis", g.srcLabel) +
-    line("Retail price", g.rp === "yes" ? "Declared (1.1)" : "Not declared (1.3)") +
+    line("Retail price", g.rp === "yes" ? "Declared (uplift 110% of [Assessed Import Value + all D&amp;T excluding paid ST/AST])" : "Not declared (uplift 130% of [Assessed Import Value + all D&amp;T excluding paid ST/AST])") +
     line("Import value (PKR)", money(g.imp)) +
     line("All duty and taxes (PKR)", money(g.total)) +
     line("Less paid sales tax", money(g.st)) +
@@ -610,7 +610,7 @@ function fillPrint() {
     if (g.srcLabel === "Manual input") { facts = ""; table = ""; }
     gstHtml = `<h3 style="margin:8px 0 2px">GST calculation (basis: ${g.srcLabel})</h3><table><tbody>
 <tr><td>Basis</td><td>${g.srcLabel}</td></tr>
-<tr><td>Retail price</td><td>${g.rp === "yes" ? "Declared (uplift 1.1)" : "Not declared (uplift 1.3)"}</td></tr>
+<tr><td>Retail price</td><td>${g.rp === "yes" ? "Declared (uplift 110% of [Assessed Import Value + all D&amp;T excluding paid ST/AST])" : "Not declared (uplift 130% of [Assessed Import Value + all D&amp;T excluding paid ST/AST])"}</td></tr>
 <tr><td>Import value (PKR)</td><td class="num">${money(g.imp)}</td></tr>
 <tr><td>All duty and taxes (PKR)</td><td class="num">${money(g.total)}</td></tr>
 <tr><td>Less paid ST / AST</td><td class="num">${money(g.st)} / ${money(g.ast)}</td></tr>
