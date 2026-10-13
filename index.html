@@ -604,7 +604,8 @@ function fillPrint() {
     table = `<table><thead><tr><th>Duty / tax</th><th class="num">Rate %</th><th class="num">Amount (PKR)</th><th class="num">Rounded</th></tr></thead><tbody>${body}<tr><td><b>TOTAL</b></td><td></td><td class="num"><b>${money(paid.total)}</b></td><td class="num"><b>${money(Math.round(paid.total), 0)}</b></td></tr></tbody></table>`;
   }
   let gstHtml = "";
-  if (gstLast) {
+  const gsrcP = (document.querySelector('input[name="gsrc"]:checked') || {}).value;
+  if (gstLast && (gsrcP === "manual" || gstIncluded())) {
     const g = computeGST(); gstLast = g;
     if (g.srcLabel === "Manual input") { facts = ""; table = ""; }
     gstHtml = `<h3 style="margin:8px 0 2px">GST calculation (basis: ${g.srcLabel})</h3><table><tbody>

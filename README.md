@@ -67,7 +67,7 @@ For Paid or Audited, tick **Include GST in the main calculation sheet**. A **GST
 - Appraising Officer (muhammadalicustoms@gmail.com)
 - Duty/Tax Calculation Sheet of GD No. … (bold, Times New Roman 16)
 - The value facts and the duty/tax table (with audit and GST when used)
-- The GST section, naming its basis (Paid, Audited or Manual)
+- The GST section, naming its basis, only when **Include GST in the main calculation sheet** is ticked or **Manual** input is used
 
 With **Manual** GST, the print shows only the GST calculation.
 
