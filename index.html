@@ -81,6 +81,18 @@
   #gManual input::-webkit-outer-spin-button, #gManual input::-webkit-inner-spin-button { -webkit-appearance: none; margin: 0; }
   #gManual input { -moz-appearance: textfield; }
   @media (max-width: 860px) { .grid { grid-template-columns: 1fr; } header { flex-direction: column; align-items: flex-start; } }
+  .yh-overlay { position: fixed; inset: 0; background: rgba(23,32,51,.45); display: none; align-items: center; justify-content: center; z-index: 1000; }
+  .yh-overlay.open { display: flex; }
+  .yh-modal { background: #fff; border-radius: 10px; border: 1px solid var(--line); padding: 16px 18px; width: min(560px, 92vw); max-height: 82vh; overflow: auto; box-shadow: 0 10px 30px rgba(0,0,0,.2); }
+  .yh-modal h3 { margin: 0 0 10px; font-size: 16px; }
+  .yh-modal input[type=text] { width: 100%; padding: 8px 10px; border: 1px solid var(--line); border-radius: 8px; font: inherit; }
+  .yh-row-btns { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+  .yh-list { list-style: none; margin: 0; padding: 0; }
+  .yh-list li { display: flex; gap: 8px; align-items: center; border-bottom: 1px solid var(--line); padding: 8px 0; }
+  .yh-list .yh-name { flex: 1; cursor: pointer; color: var(--navy); font-weight: 600; word-break: break-word; }
+  .yh-list .yh-date { color: var(--muted); font-size: 12px; font-weight: 400; display: block; }
+  .yh-toast { position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%); background: var(--navy); color: #fff; padding: 9px 16px; border-radius: 8px; z-index: 1100; display: none; font-size: 14px; }
+  @media print { .yh-overlay, .yh-toast { display: none !important; } }
   @media print {
     @page { size: A4 portrait; margin: 8mm; }
     body { background: #fff; }
@@ -109,6 +121,8 @@
     <button type="button" id="gstBtn">GST calculation</button>
     <button type="button" id="sample">Load sample GD</button>
     <button type="button" id="clear">Clear</button>
+    <button type="button" id="histSaveBtn">Save this calculation</button>
+    <button type="button" id="histBtn">History</button>
     <button type="button" class="primary" onclick="window.print()">Print</button>
   </div>
 </header>
@@ -260,6 +274,9 @@
 </main>
 <p class="credit">Yusr Duty/Taxes Calculator By ALi<span class="rao">Rao</span> · Appraising Officer (muhammadalicustoms@gmail.com)</p>
 <div class="print-sheet" id="printSheet"></div>
+<div class="yh-overlay" id="yhSaveOv" role="dialog" aria-modal="true"><div class="yh-modal"><h3>Save this calculation</h3><input type="text" id="yhName" maxlength="120" /><div class="yh-row-btns"><button type="button" id="yhCancel">Cancel</button><button type="button" class="primary" id="yhOk">Save</button></div></div></div>
+<div class="yh-overlay" id="yhHistOv" role="dialog" aria-modal="true"><div class="yh-modal"><h3>History <span id="yhCount" style="color:var(--muted);font-weight:400"></span></h3><ul class="yh-list" id="yhList"></ul><div class="yh-row-btns"><button type="button" id="yhClose">Close</button></div></div></div>
+<div class="yh-toast" id="yhToast"></div>
 <script>
 const LEVIES = [
   { key: "cd", name: "Customs Duty" },
@@ -628,6 +645,110 @@ window.addEventListener("beforeprint", () => {
 });
 window.addEventListener("afterprint", () => { document.title = APP_TITLE; });
 renderPaid();
+
+/* ---- Save & History (localStorage) ---- */
+(function () {
+  const KEY = "yusrHistory", MAX = 20;
+  const $ = id => document.getElementById(id);
+  const isOwn = el => el.closest(".yh-overlay");
+  const load = () => { try { const a = JSON.parse(localStorage.getItem(KEY) || "[]"); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+  const store = a => { try { localStorage.setItem(KEY, JSON.stringify(a)); return true; } catch (e) { alert("Could not save: browser storage is unavailable or full."); return false; } };
+  const esc = t => String(t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const MON = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  function fmt(iso) {
+    const d = new Date(iso); if (isNaN(d)) return "";
+    let h = d.getHours(); const ap = h >= 12 ? "PM" : "AM"; h = h % 12 || 12;
+    const p = n => String(n).padStart(2, "0");
+    return `${p(d.getDate())}-${MON[d.getMonth()]}-${d.getFullYear()} ${p(h)}:${p(d.getMinutes())} ${ap}`;
+  }
+  function capture() {
+    const fields = {}, radios = {};
+    document.querySelectorAll("input, select, textarea").forEach(el => {
+      if (isOwn(el)) return;
+      if (el.type === "radio") { if (el.checked && el.name) radios[el.name] = el.value; return; }
+      if (!el.id) return;
+      fields[el.id] = el.type === "checkbox" ? { checked: el.checked } : { value: el.value };
+    });
+    const activeTab = (document.querySelector(".panel.active") || {}).id || "paid";
+    return { fields, radios, auditOn: !!auditOn, activeTab, gstUsed: !!gstLast };
+  }
+  function apply(st, ids) {
+    Object.keys(st.fields || {}).forEach(id => {
+      if (ids && !ids(id)) return;
+      const el = $(id); if (!el) return;
+      const f = st.fields[id];
+      if ("checked" in f) el.checked = !!f.checked; else el.value = f.value;
+    });
+  }
+  function restore(st) {
+    if (auditOn) setAudit(false);
+    Object.keys(st.radios || {}).forEach(n => {
+      const r = document.querySelector(`input[type=radio][name="${n}"][value="${st.radios[n]}"]`); if (r) r.checked = true;
+    });
+    apply(st);
+    const gd = $("gdNo"); if (gd) gd.dispatchEvent(new Event("input", { bubbles: true }));
+    renderPaid();
+    if (st.auditOn) { setAudit(true); apply(st, id => id.startsWith("a-") || id === "auditOtherBase"); renderAudit(); }
+    gstLast = null;
+    if (st.gstUsed) renderGST();
+    const tab = $(st.activeTab);
+    if (tab && tab.classList.contains("panel")) {
+      const b = document.querySelector(`.tab[data-tab="${st.activeTab}"]`);
+      if (!b || !b.disabled) show(st.activeTab);
+      if (st.activeTab === "gst") renderGST();
+    }
+  }
+  function toast(msg) { const t = $("yhToast"); t.textContent = msg; t.style.display = "block"; clearTimeout(toast.t); toast.t = setTimeout(() => t.style.display = "none", 2200); }
+  function openSave() {
+    const gd = ($("gdNo").value || "").trim();
+    $("yhName").value = gd ? "Duty-Tax Calculation of " + gd : "Untitled calculation";
+    $("yhSaveOv").classList.add("open"); $("yhName").focus(); $("yhName").select();
+  }
+  const closeSave = () => $("yhSaveOv").classList.remove("open");
+  function doSave() {
+    const name = $("yhName").value.trim() || "Untitled calculation";
+    let list = load();
+    const idx = list.findIndex(e => e.name === name);
+    if (idx >= 0) {
+      if (!confirm(`A calculation named "${name}" already exists. Overwrite it?`)) return;
+      list.splice(idx, 1);
+    } else if (list.length >= MAX) {
+      if (!confirm(`History is full (${MAX}). Replace the oldest entry "${list[list.length - 1].name}"?`)) return;
+      list = list.slice(0, MAX - 1);
+    }
+    list.unshift({ name, savedAt: new Date().toISOString(), state: capture() });
+    if (store(list.slice(0, MAX))) { closeSave(); toast("Saved: " + name); }
+  }
+  function renderList() {
+    const list = load();
+    $("yhCount").textContent = `(${list.length}/${MAX})`;
+    $("yhList").innerHTML = list.length ? list.map((e, i) => `<li><span class="yh-name" data-load="${i}">${esc(e.name)}<span class="yh-date">${fmt(e.savedAt)}</span></span><button type="button" data-load="${i}">Load</button><button type="button" data-print="${i}">Print</button><button type="button" data-del="${i}">Delete</button></li>`).join("")
+      : `<li style="color:var(--muted)">No saved calculations yet. Use "Save this calculation" to add one.</li>`;
+  }
+  $("histSaveBtn").addEventListener("click", openSave);
+  $("histBtn").addEventListener("click", () => { renderList(); $("yhHistOv").classList.add("open"); });
+  $("yhOk").addEventListener("click", doSave);
+  $("yhCancel").addEventListener("click", closeSave);
+  $("yhClose").addEventListener("click", () => $("yhHistOv").classList.remove("open"));
+  $("yhName").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); doSave(); } });
+  document.addEventListener("keydown", e => { if (e.key === "Escape") { closeSave(); $("yhHistOv").classList.remove("open"); } });
+  $("yhList").addEventListener("click", e => {
+    const t = e.target.closest("[data-load],[data-del],[data-print]"); if (!t) return;
+    const list = load();
+    if (t.dataset.del !== undefined) {
+      const ent = list[+t.dataset.del]; if (!ent) return;
+      if (confirm(`Delete "${ent.name}"?`)) { list.splice(+t.dataset.del, 1); store(list); renderList(); }
+      return;
+    }
+    const isPrint = t.dataset.print !== undefined;
+    const ent = list[+(isPrint ? t.dataset.print : t.dataset.load)]; if (!ent) return;
+    restore(ent.state || {});
+    $("yhHistOv").classList.remove("open");
+    if (isPrint) setTimeout(() => window.print(), 50);
+    else toast("Loaded: " + ent.name);
+  });
+  window.yusrHistory = { capture, restore, load, KEY, MAX };
+})();
 </script>
 </body>
 </html>
