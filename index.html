@@ -370,10 +370,11 @@ function compute(prefix, baseId) {
   const pkr = fc * num("rate");
   const rates = {};
   LEVIES.forEach(l => { rates[l.key] = num(prefix + "r-" + l.key); });
-  const dutyKeys = ["cd", "acd", "rd", "fed"];
   const amounts = {};
   let duties = 0;
-  dutyKeys.forEach(k => { amounts[k] = pkr * rates[k] / 100; duties += amounts[k]; });
+  ["cd", "acd", "rd"].forEach(k => { amounts[k] = pkr * rates[k] / 100; duties += amounts[k]; });
+  amounts.fed = (pkr + amounts.cd + amounts.acd) * rates.fed / 100;
+  duties += amounts.fed;
   amounts.add = pkr * rates.add / 100;
   const stBase = pkr + duties;
   amounts.st = stBase * rates.st / 100;
