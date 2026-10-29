@@ -47,6 +47,20 @@
   .choice { border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; margin-top: 6px; background: var(--soft); }
   .choice label { display: flex; gap: 8px; align-items: center; margin: 6px 0; font-size: 14px; }
   .hint { color: var(--muted); font-size: 12px; margin: 4px 0 0; }
+  .pct-warn { background: #fff4de; color: #8a5200; border: 1px solid #f0d49a; border-radius: 8px; padding: 6px 10px; font-size: 12px; margin-top: 6px; line-height: 1.4; }
+  .pct-desc { margin-top: 8px; font-size: 13px; line-height: 1.4; }
+  .pct-err { color: var(--red); font-size: 12.5px; margin-top: 6px; }
+  .pct-edits { margin-top: 6px; font-size: 12px; color: #8a5200; }
+  .rate input.pct-edited { border-color: #d98a00; background: #fff4de; }
+  #pctCode, #a-pctCode { flex: 1 1 140px; min-width: 140px; max-width: 170px; font-variant-numeric: tabular-nums; }
+  .pct-box .row { flex-wrap: wrap; }
+  #pctFetch, #a-pctFetch, #pctReset, #a-pctReset { white-space: nowrap; flex: 0 0 auto; padding: 9px 16px; font-weight: 600; border-radius: 8px; cursor: pointer; transition: background .15s, border-color .15s, color .15s; }
+  #pctFetch, #a-pctFetch { background: var(--navy); color: #fff; border: 1px solid var(--navy); }
+  #pctFetch:hover, #a-pctFetch:hover { background: #0f2438; border-color: #0f2438; }
+  #pctReset, #a-pctReset { background: #fff; color: var(--navy); border: 1px solid var(--navy); }
+  #pctReset:hover, #a-pctReset:hover { background: #eaf0f7; }
+  #pctFetch:focus-visible, #a-pctFetch:focus-visible, #pctReset:focus-visible, #a-pctReset:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  @media print { .pct-box { display: none !important; } }
   .rate { display: grid; grid-template-columns: 170px 1fr 28px; gap: 8px; align-items: center; margin: 7px 0; }
   .metric { display: flex; justify-content: space-between; gap: 12px; border: 1px solid var(--line); background: var(--soft); border-radius: 8px; padding: 9px 12px; margin: 8px 0; }
   .metric b { font-variant-numeric: tabular-nums; }
@@ -137,6 +151,17 @@
     <div class="grid">
       <section>
         <h2>Inputs</h2>
+        <div class="pct-box">
+          <label class="field" for="pctCode" style="margin-top:0">PCT heading (optional)</label>
+          <div class="row">
+            <input id="pctCode" type="text" inputmode="numeric" placeholder="0000.0000" maxlength="9" autocomplete="off" />
+            <button type="button" id="pctFetch">Fetch rates</button>
+            <button type="button" id="pctReset" style="display:none">Reset to tariff</button>
+          </div>
+          <div id="pctInfo"></div>
+          <div id="pctEdits" class="pct-edits"></div>
+          <p class="hint">Fills CD, ACD, RD, FED and Sales Tax from Tariff 2026-27. Every rate stays editable for claimed exemptions. ADD, AST, IT and Other are never changed.</p>
+        </div>
         <label class="field" for="invoice">Invoice / assessed value</label>
         <div class="row">
           <input id="invoice" type="number" min="0" step="0.01" value="0" />
@@ -203,6 +228,17 @@
       <section>
         <h2>Audited rates</h2>
         <p class="hint">Value, insurance, landing charges and exchange rate stay as paid. Change only the rates found in audit.</p>
+        <div class="pct-box">
+          <label class="field" for="a-pctCode" style="margin-top:12px">PCT heading for audit (optional)</label>
+          <div class="row">
+            <input id="a-pctCode" type="text" inputmode="numeric" placeholder="0000.0000" maxlength="9" autocomplete="off" />
+            <button type="button" id="a-pctFetch">Fetch rates</button>
+            <button type="button" id="a-pctReset" style="display:none">Reset to tariff</button>
+          </div>
+          <div id="a-pctInfo"></div>
+          <div id="a-pctEdits" class="pct-edits"></div>
+          <p class="hint">Use this when the audit finds a different PCT heading. Fills audited CD, ACD, RD, FED and Sales Tax from Tariff 2026-27; every rate stays editable. ADD, AST, IT and Other are never changed.</p>
+        </div>
         <div id="auditRates"></div>
         <label class="field" for="auditOtherBase">Other levy base</label>
         <select id="auditOtherBase">
@@ -597,6 +633,8 @@ function fillPrint() {
   const paid = auditOn && paidSnap ? paidSnap : compute("", "otherBase");
   const audited = auditOn ? compute("a-", "auditOtherBase") : null;
   let facts = [
+    ...(window.pctPrint && window.pctPrint() ? [["PCT heading", window.pctPrint()]] : []),
+    ...(auditOn && window.pctPrintAudit && window.pctPrintAudit() ? [["PCT heading (audited)", window.pctPrintAudit()]] : []),
     ["Invoice / assessed value", money(num("invoice")) + " " + paid.ccy],
     ["Insurance", money(paid.insurance) + " " + paid.ccy],
     ["Landing charges", money(paid.landing) + " " + paid.ccy],
@@ -749,6 +787,103 @@ renderPaid();
     else toast("Loaded: " + ent.name);
   });
   window.yusrHistory = { capture, restore, load, KEY, MAX };
+})();
+</script>
+<script src="tariff-2026-27.js"></script>
+<script src="pct-lookup.js"></script>
+<script>
+/* ---- PCT heading lookup (Tariff 2026-27): paid and audited rates ---- */
+(function () {
+  const $ = id => document.getElementById(id);
+  const KEYS = [["cd", "CD"], ["acd", "ACD"], ["rd", "RD"], ["fed", "FED"], ["st", "Sales Tax"]];
+  const esc = t => String(t == null ? "" : t).replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+  const digits = v => String(v || "").replace(/[^0-9]/g, "");
+  const fmtCode = v => { const d = digits(v); return d.length === 8 ? d.slice(0, 4) + "." + d.slice(4) : String(v || ""); };
+  const toBase = res => ({ pct: res.pct, desc: res.desc, page: res.page, note: res.note, warnings: res.warnings,
+    vals: { cd: res.cd, acd: res.acd, rd: res.rd, fed: res.fed, st: res.st } });
+
+  function make(cfg) {
+    const P = cfg.prefix; /* "" for paid, "a-" for audited */
+    const el = id => $(P + id);
+    const rate = k => $(P + "r-" + k);
+    const val = k => { const v = parseFloat(rate(k).value); return Number.isFinite(v) ? v : 0; };
+    const inMode = () => (typeof auditOn !== "undefined" && auditOn) === cfg.audit;
+    let base = null;
+
+    function showInfo() {
+      const box = el("pctInfo");
+      if (!base) { box.innerHTML = ""; el("pctReset").style.display = "none"; el("pctEdits").textContent = ""; return; }
+      box.innerHTML = `<div class="pct-desc"><b>${esc(base.pct)}</b> &middot; ${esc(base.desc)}<br><span class="hint">Tariff 2026-27, page ${esc(base.page)}${base.note ? " &middot; " + esc(base.note) : ""}</span></div>` +
+        base.warnings.map(w => `<div class="pct-warn">${esc(w)}</div>`).join("");
+      el("pctReset").style.display = "";
+    }
+    function mark() {
+      const edits = [];
+      KEYS.forEach(([k, label]) => {
+        const t = base ? base.vals[k] : null;
+        const edited = !!(base && t != null && Math.abs(val(k) - t) > 1e-9);
+        rate(k).classList.toggle("pct-edited", edited);
+        rate(k).title = edited ? "Tariff rate: " + t + "%" : "";
+        if (edited) edits.push(label + " " + t + "% \u2192 " + val(k) + "%");
+      });
+      el("pctEdits").textContent = edits.length ? "Changed from tariff: " + edits.join(", ") : "";
+    }
+    function fillRates() {
+      KEYS.forEach(([k]) => { const t = base.vals[k]; rate(k).value = t == null ? "0" : String(t); });
+      cfg.render(); mark();
+    }
+    function fetchRates() {
+      const info = el("pctInfo"), code = el("pctCode").value;
+      if (!inMode()) { info.innerHTML = `<div class="pct-err">${cfg.audit ? "Turn Audit on to fetch tariff rates for the audited calculation." : "Turn Audit off to fetch tariff rates for the paid calculation."}</div>`; return; }
+      if (!window.PCTLookup) { info.innerHTML = '<div class="pct-err">Tariff data not found. Keep tariff-2026-27.js and pct-lookup.js in the same folder as index.html.</div>'; return; }
+      const res = PCTLookup.find(code);
+      if (!res) {
+        base = null; el("pctReset").style.display = "none"; el("pctEdits").textContent = ""; mark();
+        const sug = PCTLookup.suggest(code);
+        info.innerHTML = `<div class="pct-err">${digits(code).length === 8 ? "Heading not found in Tariff 2026-27." : "Enter all 8 digits of the PCT heading."}</div>` +
+          (sug.length ? `<div class="hint">Similar: ${sug.map(esc).join("<br>")}</div>` : "");
+        return;
+      }
+      el("pctCode").value = res.pct;
+      base = toBase(res); showInfo(); fillRates();
+    }
+    /* Rebuild the tariff reference silently (after Load from History or code edits) without changing any rate. */
+    function syncBase() {
+      if (!window.PCTLookup) return;
+      const code = el("pctCode").value, res = PCTLookup.find(code);
+      if (res) { if (!base || base.pct !== res.pct) { base = toBase(res); showInfo(); } }
+      else if (!digits(code).length) { base = null; showInfo(); }
+      mark();
+    }
+    function clear() { base = null; el("pctCode").value = ""; showInfo(); mark(); }
+
+    el("pctFetch").addEventListener("click", fetchRates);
+    el("pctReset").addEventListener("click", () => { if (base && inMode()) fillRates(); });
+    el("pctCode").addEventListener("keydown", e => { if (e.key === "Enter") { e.preventDefault(); e.stopImmediatePropagation(); fetchRates(); } });
+    el("pctCode").addEventListener("input", () => { const c = el("pctCode"); c.value = c.value.replace(/[^0-9.]/g, ""); });
+    el("pctCode").addEventListener("blur", () => { el("pctCode").value = fmtCode(el("pctCode").value); });
+    document.body.addEventListener("change", () => { if (base) mark(); });
+    document.body.addEventListener("input", e => { if (!(e.target && e.target.id === "gdNo") && base) mark(); });
+    return { syncBase, clear, mark, code: () => (digits(el("pctCode").value).length === 8 ? fmtCode(el("pctCode").value) : "") };
+  }
+
+  const paid = make({ prefix: "", audit: false, render: () => renderPaid() });
+  const aud = make({ prefix: "a-", audit: true, render: () => renderAudit() });
+
+  document.body.addEventListener("input", e => { if (e.target && e.target.id === "gdNo") { paid.syncBase(); aud.syncBase(); } });
+  $("clear").addEventListener("click", () => { paid.clear(); aud.clear(); });
+  $("sample").addEventListener("click", () => { paid.clear(); aud.clear(); });
+
+  /* Switching Audit on/off resets audited rates to the paid rates, so the audited tariff reference is cleared too. */
+  const _setAudit = setAudit;
+  setAudit = function (on) { _setAudit(on); aud.clear(); };
+  /* After any audit render (including Load from History) rebuild the audited reference silently. */
+  const _renderAudit = renderAudit;
+  renderAudit = function () { _renderAudit.apply(this, arguments); aud.syncBase(); };
+
+  window.pctPrint = () => paid.code();
+  window.pctPrintAudit = () => aud.code();
+  paid.syncBase();
 })();
 </script>
 </body>

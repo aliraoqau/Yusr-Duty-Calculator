@@ -25,6 +25,7 @@ Version 2 adds a practical Save & History workflow. Users can save, reopen, prin
 
 ## Key Features
 
+- Fetches CD, ACD, RD, FED and Sales Tax rates from Pakistan Customs Tariff 2026-27 by PCT heading, with every rate still editable
 - Calculates import value in foreign currency and PKR
 - Calculates CD, ACD, RD, FED, ADD, ST, AST, IT, and a configurable Other levy
 - Compares paid and audited assessments levy by levy
@@ -94,6 +95,21 @@ IT Base = Import Value + CD + ACD + RD + FED + ST + AST
 - **Other** can be given a custom name and charged on the duty base, sales-tax base, or income-tax base.
 
 > CESS, stamp duty, and other provincial charges are outside this calculator's core assessment.
+
+## PCT Heading Lookup (Tariff 2026-27)
+
+Enter an 8-digit PCT heading (with or without the dot, e.g. `3102.1000` or `31021000`) in the **PCT heading** field and select **Fetch rates** (or press Enter).
+
+- Fills **CD, ACD, RD, FED and Sales Tax** in the Paid calculation and recalculates at once.
+- Every fetched rate stays editable. Edited rates turn amber and a "Changed from tariff" line lists the original tariff rates, so a claimed exemption or concession can be applied. **Reset to tariff** restores them.
+- In Audit Mode, the **Audited calculation** tab has its own **PCT heading for audit** field, for cases where the audit finds a different heading. It fills the audited rates only; the paid rates stay fixed. Both headings are saved in History, and the audited heading is shown on the printed audit sheet.
+- **ADD, AST, IT and Other** are never changed by the lookup.
+- Warnings appear for headings where the tariff data needs manual input or checking: specific (per-unit) duties, missing or unclear CD/RD, FED charged on retail price or per unit, conditional sales tax (marked `*`), and Import Policy Order banned/restricted entries.
+- The PCT heading is saved with History records and shown on the printed sheet.
+
+**Files:** keep `tariff-2026-27.js` and `pct-lookup.js` in the same folder as `index.html`. If they are missing, the calculator works as before and shows a message when Fetch is used.
+
+The tariff data was extracted from a reference PDF (hscodepakistan.com) and may contain errors. Verify rates against the official Customs Tariff and applicable SROs.
 
 ## Audit Mode
 
